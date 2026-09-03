@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Deteksi APD - Sapa Teknis</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --line:#30363d;
+    --ok:#2ea043; --bad:#f85149; --wait:#d29922;
+    --txt:#e6edf3; --muted:#8b949e; --accent:#388bfd;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  .wrap { max-width:520px; margin:0 auto; padding:12px; }
+  h1 { font-size:17px; margin:6px 2px 12px; font-weight:600; }
+  h1 span { color:var(--muted); font-weight:400; font-size:13px; display:block; margin-top:2px; }
+  .cambox { position:relative; border-radius:14px; overflow:hidden; background:#000; aspect-ratio:3/4; border:1px solid var(--line); }
+  video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; }
+  .badge { position:absolute; top:10px; left:10px; z-index:5; background:rgba(13,17,23,.8); backdrop-filter:blur(6px); padding:6px 11px; border-radius:20px; font-size:12px; display:flex; align-items:center; gap:7px; }
+  .dot { width:8px; height:8px; border-radius:50%; background:var(--wait); }
+  .dot.live { background:var(--ok); animation:pulse 1.4s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.35} }
+  .verdict { position:absolute; bottom:0; left:0; right:0; z-index:5; padding:14px; background:linear-gradient(transparent, rgba(13,17,23,.94)); }
+  .vtitle { font-size:15px; font-weight:600; margin-bottom:9px; }
+  .items { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+  .item { display:flex; align-items:center; gap:8px; font-size:13px; padding:7px 10px; background:rgba(48,54,61,.55); border-radius:9px; }
+  .ic { width:18px; height:18px; border-radius:50%; flex-shrink:0; display:grid; place-items:center; font-size:11px; font-weight:700; color:#fff; }
+  .ic.y { background:var(--ok); } .ic.n { background:var(--bad); } .ic.u { background:var(--muted); }
+  .noperson { position:absolute; inset:0; z-index:4; display:grid; place-items:center; font-size:14px; color:var(--muted); }
+  .controls { display:flex; gap:9px; margin-top:12px; }
+  button { flex:1; padding:13px; border:0; border-radius:11px; font-size:14px; font-weight:600; color:#fff; background:var(--accent); }
+  button:active { opacity:.8; }
+  button.ghost { background:var(--panel); border:1px solid var(--line); color:var(--txt); flex:0 0 auto; padding:13px 15px; }
+  button:disabled { opacity:.4; }
+  .row { display:flex; align-items:center; gap:10px; margin-top:12px; padding:11px; background:var(--panel); border:1px solid var(--line); border-radius:11px; font-size:13px; flex-wrap:wrap; }
+  .row label { color:var(--muted); }
+  select, input[type=text] { background:var(--bg); color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:7px 9px; font-size:13px; }
+  input[type=text] { flex:1; min-width:120px; }
+  .chk { display:flex; align-items:center; gap:6px; }
+  .note { margin-top:10px; font-size:12px; color:var(--muted); line-height:1.55; }
+  .log { margin-top:10px; font-size:12px; color:var(--muted); min-height:16px; }
+  .log a { color:var(--accent); }
+  .cfg { margin-top:10px; font-size:11px; color:var(--muted); word-break:break-all; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Deteksi APD
+    <span>Sapa Teknis — pengecekan kelengkapan APD pekerja via kamera</span>
+  </h1>
+
+  <div class="row">
+    <label>Lokasi</label>
+    <input type="text" id="lokasi" placeholder="mis. TBBM Boyolali">
+  </div>
+
+  <div class="cambox" style="margin-top:12px">
+    <video id="vid" autoplay muted playsinline></video>
+    <div class="noperson" id="noperson" style="display:none">Tidak ada orang terdeteksi</div>
+    <div class="badge"><span class="dot" id="dot"></span><span id="status">Kamera mati</span></div>
+    <div class="verdict" id="verdict" style="display:none">
+      <div class="vtitle" id="vtitle"></div>
+      <div class="items" id="items"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btnStart">Mulai Kamera</button>
+    <button id="btnAuto" class="ghost" disabled>Auto: OFF</button>
+    <button id="btnShot" disabled>Cek Sekarang</button>
+  </div>
+
+  <div class="row">
+    <label>Interval</label>
+    <select id="interval">
+      <option value="4000">4 detik</option>
+      <option value="5000" selected>5 detik</option>
+      <option value="6000">6 detik</option>
+      <option value="10000">10 detik</option>
+    </select>
+    <span class="chk"><input type="checkbox" id="logOk" checked><label for="logOk">Log Sheet</label></span>
+    <span class="chk"><input type="checkbox" id="savePhoto" checked><label for="savePhoto">Simpan foto</label></span>
+  </div>
+
+  <div class="note">Arahkan kamera ke pekerja. Aktifkan <b>Auto</b> untuk cek berkala, atau tekan <b>Cek Sekarang</b> untuk sekali cek. Hasil &amp; foto bukti otomatis tersimpan.</div>
+  <div class="log" id="lastlog"></div>
+  <div class="cfg" id="cfg"></div>
+</div>
+
+<script>
+// ====== ISI URL WEB APP APPS SCRIPT ANDA (yang berakhir /exec) ======
+const API_URL = 'https://script.google.com/macros/s/AKfycbzMvDBggWNQbJaYJ9mqpt9kmHd_8qofka7w17Pmm-w3xHxaG0IPjKrm6IAlBxk45ZEs/exec';
+// ====================================================================
+
+const vid = document.getElementById('vid');
+let stream = null, autoTimer = null, busy = false, autoOn = false;
+
+const APD = [
+  { key:'helm',    label:'Helm Safety' },
+  { key:'seragam', label:'Seragam' },
+  { key:'sepatu',  label:'Sepatu Safety' },
+  { key:'rompi',   label:'Rompi/Vest' },
+];
+
+document.getElementById('cfg').textContent =
+  API_URL.startsWith('http') ? '' : '⚠ API_URL belum diisi di index.html';
+
+function setStatus(t, live){
+  document.getElementById('status').textContent = t;
+  document.getElementById('dot').className = 'dot' + (live ? ' live' : '');
+}
+
+async function startCam(){
+  try{
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{ facingMode:'environment', width:{ideal:1280}, height:{ideal:1280} }, audio:false
+    });
+    vid.srcObject = stream;
+    await vid.play();
+    setStatus('Kamera aktif', true);
+    document.getElementById('btnStart').textContent = 'Matikan';
+    document.getElementById('btnShot').disabled = false;
+    document.getElementById('btnAuto').disabled = false;
+  }catch(e){
+    setStatus('Kamera ditolak', false);
+    alert('Tidak bisa akses kamera: ' + e.message);
+  }
+}
+
+function stopCam(){
+  if(autoOn) toggleAuto();
+  stream && stream.getTracks().forEach(t=>t.stop());
+  stream = null;
+  setStatus('Kamera mati', false);
+  document.getElementById('btnStart').textContent = 'Mulai Kamera';
+  document.getElementById('btnShot').disabled = true;
+  document.getElementById('btnAuto').disabled = true;
+  document.getElementById('verdict').style.display = 'none';
+  document.getElementById('noperson').style.display = 'none';
+}
+
+function capture(){
+  const w = vid.videoWidth, h = vid.videoHeight;
+  if(!w) return null;
+  const c = document.createElement('canvas');
+  const scale = Math.min(1, 720/Math.max(w,h));
+  c.width = Math.round(w*scale);
+  c.height = Math.round(h*scale);
+  c.getContext('2d').drawImage(vid, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+async function analyze(){
+  if(busy || !stream) return;
+  if(!API_URL.startsWith('http')){ alert('API_URL belum diisi di index.html'); return; }
+  const b64 = capture();
+  if(!b64) return;
+  busy = true;
+  setStatus('Menganalisa...', true);
+
+  try{
+    // text/plain = simple request, tidak trigger CORS preflight
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        image: b64,
+        lokasi: document.getElementById('lokasi').value,
+        doLog: document.getElementById('logOk').checked,
+        savePhoto: document.getElementById('savePhoto').checked
+      })
+    });
+    const r = await res.json();
+    if(r.error) throw new Error(r.error);
+    onResult(r);
+  }catch(e){
+    setStatus('Error', true);
+    document.getElementById('lastlog').textContent = e.message;
+  }finally{
+    busy = false;
+  }
+}
+
+function onResult(r){
+  setStatus('Kamera aktif', true);
+  const v  = document.getElementById('verdict');
+  const np = document.getElementById('noperson');
+
+  if(!r.ada_orang){
+    v.style.display = 'none';
+    np.style.display = 'grid';
+    document.getElementById('lastlog').textContent = '';
+    return;
+  }
+  np.style.display = 'none';
+
+  const box = document.getElementById('items');
+  box.innerHTML = '';
+  let miss = 0;
+  APD.forEach(a=>{
+    const val = r[a.key];
+    const cls = val===true ? 'y' : val===false ? 'n' : 'u';
+    if(val===false) miss++;
+    box.insertAdjacentHTML('beforeend',
+      '<div class="item"><span class="ic '+cls+'">'+(val===true?'✓':val===false?'✕':'?')+'</span>'+a.label+'</div>');
+  });
+
+  document.getElementById('vtitle').innerHTML = miss===0
+    ? '<span style="color:var(--ok)">● APD Lengkap</span>'
+    : '<span style="color:var(--bad)">● '+miss+' APD tidak terpakai</span>';
+  v.style.display = 'block';
+
+  let logHtml = r.catatan ? ('Catatan: ' + r.catatan) : '';
+  if(r.fotoUrl) logHtml += ' &nbsp;·&nbsp; <a href="'+r.fotoUrl+'" target="_blank">foto bukti</a>';
+  document.getElementById('lastlog').innerHTML = logHtml;
+}
+
+function toggleAuto(){
+  autoOn = !autoOn;
+  const b = document.getElementById('btnAuto');
+  if(autoOn){
+    b.textContent = 'Auto: ON';
+    b.style.background = 'var(--ok)';
+    autoTimer = setInterval(analyze, +document.getElementById('interval').value);
+    analyze();
+  }else{
+    b.textContent = 'Auto: OFF';
+    b.style.background = '';
+    clearInterval(autoTimer);
+  }
+}
+
+document.getElementById('btnStart').onclick = ()=> stream ? stopCam() : startCam();
+document.getElementById('btnShot').onclick  = analyze;
+document.getElementById('btnAuto').onclick  = toggleAuto;
+document.getElementById('interval').onchange = ()=>{ if(autoOn){ toggleAuto(); toggleAuto(); } };
+</script>
+</body>
+</html>
